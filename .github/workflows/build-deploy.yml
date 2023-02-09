@@ -1,0 +1,108 @@
+name: Build and deploy Website
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  BUILD_PATH: ${{ github.workspace }}/build
+  NODE_VERSION: '16'
+  VITE_APP_AZURESEARCH_KEY: ${{ secrets.VITE_APP_AZURESEARCH_KEY }}
+
+jobs:
+  build:
+    name: Build ⚙️📦
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js ${{ env.NODE_VERSION }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build Staging Website
+      run: npm run build
+      env:
+        BASE_PATH: /scoopinstaller-dev.github.io/
+
+    - name: Upload Staging Website
+      uses: actions/upload-artifact@v3
+      with:
+        name: staging_website
+        path: ${{ env.BUILD_PATH }}
+
+    - name: Build Production Website
+      run: npm run build
+      env:
+        BASE_PATH: /
+
+    - name: Upload Production Website
+      uses: actions/upload-artifact@v3
+      with:
+        name: production_website
+        path: ${{ env.BUILD_PATH }}
+
+    - name: Upload stats
+      uses: actions/upload-artifact@v3
+      with:
+        name: stats
+        path: ${{ github.workspace }}/build_stats
+
+
+  deploy_staging:
+    if: github.event_name == 'push'
+    environment:
+      name: Staging
+      url: https://scoop.sh/scoopinstaller-dev.github.io
+    name: Staging deployment 🚀🌐
+    needs: [ build ]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v3
+      with:
+          name: staging_website
+          path: ${{ env.BUILD_PATH }}
+
+    - name: Deploy website
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        deploy_key: ${{ secrets.GHPAGES_DEPLOY_KEY_DEV }}
+        external_repository: ScoopInstaller/scoopinstaller-dev.github.io
+        publish_branch: master
+        publish_dir: ./build
+
+
+  deploy_production:
+    if: github.event_name == 'push'
+    environment:
+      name: Production
+      url: https://scoop.sh
+    name: Production deployment 🚀🌐
+    needs: [ build ]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v3
+      with:
+          name: production_website
+          path: ${{ env.BUILD_PATH }}
+
+    - name: Deploy website
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_branch: gh-pages
+        publish_dir: ./build
+        cname: scoop.sh
